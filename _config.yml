@@ -1,7 +1,13 @@
 title: OccupancyReact Final Report
 description: A comprehensive analysis of OccupancyNet, a learned neural network controller for autonomous navigation.
-url: "" # the base hostname & protocol for your site, e.g. http://example.com
-baseurl: "" # the subpath of your site, e.g. /blog
+url: "https://anirudhadg-ati.github.io"
+baseurl: "/mppinet-report"
+
+
+
+exclude:
+  - README.md
+
 markdown: kramdown
 kramdown:
   input: GFM

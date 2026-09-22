@@ -4,29 +4,47 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ page.title | default: site.title }}</title>
-    <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
-    <!-- Modern Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Simplex Theme from Bootswatch CDN -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootswatch@5.3.2/dist/simplex/bootstrap.min.css">
+    <style>
+        body { 
+            padding-top: 3rem; 
+            padding-bottom: 3rem; 
+        }
+        .container {
+            max-width: 960px;
+        }
+        img, video, iframe { 
+            max-width: 100%; 
+            height: auto; 
+            border-radius: 8px; 
+            margin: 1.5rem auto; 
+            display: block;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        pre { 
+            background: #f8f9fa; 
+            padding: 1rem; 
+            border-radius: 6px; 
+            border: 1px solid #e9ecef; 
+        }
+        blockquote {
+            border-left: 4px solid #d9230f; /* Simplex primary color */
+            padding: 1rem 1.5rem;
+            background-color: #fcfcfc;
+            border-radius: 0 6px 6px 0;
+            margin: 1.5rem 0;
+        }
+        h1, h2, h3 {
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+        }
+        h1 { border-bottom: 1px solid #eee; padding-bottom: 0.5rem; }
+    </style>
 </head>
 <body>
-    <div class="site-wrapper">
-        <header class="site-header">
-            <div class="container">
-                <h1>{{ site.title }}</h1>
-                <p class="description">{{ site.description }}</p>
-            </div>
-        </header>
-
-        <main class="page-content container" aria-label="Content">
-            {{ content }}
-        </main>
-        
-        <footer class="site-footer">
-            <div class="container">
-                <p>OccupancyNet Navigation Deployment Report</p>
-            </div>
-        </footer>
+    <div class="container">
+        {{ content }}
     </div>
 </body>
 </html>
