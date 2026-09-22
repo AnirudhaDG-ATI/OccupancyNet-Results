@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OccupancyReact Final Report</title>
+    <!-- Simplex Theme from Bootswatch CDN -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootswatch@5.3.2/dist/simplex/bootstrap.min.css">
+    <style>
+        body { 
+            padding-top: 3rem; 
+            padding-bottom: 3rem; 
+        }
+        .container {
+            max-width: 960px;
+        }
+        img, video, iframe { 
+            max-width: 100%; 
+            height: auto; 
+            border-radius: 8px; 
+            margin: 1.5rem auto; 
+            display: block;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        pre { 
+            background: #f8f9fa; 
+            padding: 1rem; 
+            border-radius: 6px; 
+            border: 1px solid #e9ecef; 
+        }
+        blockquote {
+            border-left: 4px solid #d9230f; /* Simplex primary color */
+            padding: 1rem 1.5rem;
+            background-color: #fcfcfc;
+            border-radius: 0 6px 6px 0;
+            margin: 1.5rem 0;
+        }
+        h1, h2, h3 {
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+        }
+        h1 { border-bottom: 1px solid #eee; padding-bottom: 0.5rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 style="text-align: center;">OccupancyReact</h1>
+<blockquote>
+  <p><strong>Abstract:</strong> This report presents a comprehensive analysis of OccupancyNet, a learned neural network controller for autonomous navigation, evaluated against a classical MPPI baseline. <strong>A critical focus of this work is the successful sim-to-real pipeline: the model is extensively trained on procedurally generated, highly diverse warehouse environments within NVIDIA Isaac Sim, and subsequently deployed and validated in real-world scenarios on an NVIDIA Jetson-powered physical robot</strong>. The document details the simulated data collection methodology, the hybrid two-stream neural architecture (ResNet-18 for spatial feature extraction and a State MLP for kinematic encoding), and empirical results encompassing trajectory deviation, cross-track error, and edge hardware utilization.</p>
+</blockquote>
+
+<h2 id="data-collection-methodology">Data Collection Methodology</h2>
+<h3 id="procedural-environment-generation-in-isaac-sim">Procedural Environment Generation in Isaac Sim</h3>
+<p>To ensure our learned controller was trained and evaluated on a diverse set of navigation scenarios, the data collection environment was procedurally generated within Isaac Sim:</p>
+
+<ul>
+  <li><strong>Base Layout Generation:</strong> The pipeline begins with generative map configurations that build the foundational warehouse structure, establishing fixed boundaries, distinct rooms, and large static infrastructure.</li>
+  <li><strong>Procedural Clutter &amp; Obstacles:</strong> To simulate realistic, unpredictable environments, a secondary generation step dynamically spawns modular pallets, crates, and varied clutter across the map.</li>
+  <li><strong>Dynamic Scenario Creation:</strong> By randomizing the placement, rotation, and density of these obstacles per session, we create highly complex, varied spaces that rigorously test the robot’s spatial awareness and obstacle avoidance capabilities.</li>
+  <li><strong>Navigation Task:</strong> Within these procedurally generated configurations, the simulated Nova Carter robot systematically navigated between predefined pairs of valid, open points to gather comprehensive movement data.</li>
+</ul>
+
+<h3 id="robot-deployment--hardware-setup">Robot Deployment &amp; Hardware Setup</h3>
+<p>When deploying our autonomous navigation stack to the actual robot hardware the system runs across a set of containerized environments:</p>
+
+<ul>
+  <li><strong>PyTorch Inference Container:</strong> A dedicated Docker container optimized for NVIDIA Jetson devices running PyTorch. This environment loads the trained OccupancyNet model and serves inference via a lightweight ZMQ-based messaging architecture, allowing high-throughput, low-latency neural network predictions independent of ROS overhead.</li>
+  <li><strong>ROS 2 Dev Container:</strong> The primary navigation and hardware interface layer. This container runs the ROS 2 middleware, handling all sensor ingress, transform (TF) broadcasting, and the overarching behavior tree.</li>
+  <li><strong>DLIO (Direct LiDAR-Inertial Odometry):</strong> To achieve robust, high-frequency state estimation in complex environments, we utilize DLIO. It fuses high-density 3D LiDAR point clouds with high-rate IMU data, providing the robot with extremely accurate and smooth odometry—critical for both the classical controller and OccupancyNet to maintain stability.</li>
+  <li><strong>ICP (Iterative Closest Point) Localization:</strong> For global map registration, ICP is run on the LiDAR scans to match the robot’s local frame against the prior global map. This corrects any long-term odometric drift accumulated by DLIO, ensuring the robot’s pose stays precisely aligned with the global costmaps.</li>
+  <li><strong>Nav2 Stack Configuration:</strong> The ROS 2 Navigation stack is configured with a custom hybrid pipeline. While the global planner computes the long-range path to the goal, the standard Nav2 MPPI local controller is bypassed/bridged so that the neural network predictions from the PyTorch container can be executed directly as velocity commands to the base hardware.</li>
+</ul>
+
+<h3 id="collected-data-modalities-occupancynet-inputs">Collected Data Modalities (OccupancyNet Inputs)</h3>
+<p>During these automated benchmarking trials, a comprehensive suite of navigation data was recorded to ROS 2 bag files (stored in the <code class="language-plaintext highlighter-rouge">recordings</code> and <code class="language-plaintext highlighter-rouge">recordings_big</code> directories). This telemetry forms the foundation of the dataset used to train the <code class="language-plaintext highlighter-rouge">src4</code> OccupancyNet model. The key data modalities collected include:</p>
+
+<ul>
+  <li><strong>Local Costmap:</strong> A 2D spatial grid centered on the robot, capturing the immediate obstacle environment derived from simulated LiDAR data. This provides the model with critical localized spatial awareness for collision avoidance.
+<img src="zarr_vis/local_costmap_1.png" alt="Local Costmap" style="max-width: 400px; height: auto;" /></li>
+</ul>
+<p style="text-align: center; font-style: italic; margin-bottom: 0.5em; color: #6c757d;">Local Costmap visualization from Zarr dataset</p>
+<ul>
+  <li><strong>Cost-to-Go Map:</strong> A heuristic grid generated by the global planner, indicating the estimated navigational cost or distance from any given cell to the target goal. This map provides a gradient that guides the local controller towards the long-term objective, helping it navigate around large obstacles and avoid local minima.
+<img src="zarr_vis/cost_to_go_1.png" alt="Cost-to-Go Map" style="max-width: 400px; height: auto;" /></li>
+</ul>
+<p style="text-align: center; font-style: italic; margin-bottom: 0.5em; color: #6c757d;">Cost-to-Go Map heuristic grid</p>
+<ul>
+  <li><strong>Goal Mask:</strong> A binary spatial mask highlighting the position of the immediate navigational waypoint. This directs the neural network’s attention toward the intended target relative to its current pose.
+<img src="zarr_vis/goal_mask_1.png" alt="Goal Mask" style="max-width: 400px; height: auto;" /></li>
+</ul>
+<p style="text-align: center; font-style: italic; margin-bottom: 0.5em; color: #6c757d;">Goal Mask visualization directing neural attention</p>
+<ul>
+  <li><strong>Global Path (Waypoints):</strong> The sequence of planned poses generated by the Nav2 global planner. This path provides a macro-level trajectory that the local controller attempts to follow while negotiating dynamic local constraints.</li>
+  <li><strong>Odometry &amp; Kinematics:</strong> High-frequency data regarding the robot’s current linear and angular velocities, as well as its precise pose relative to the map frame. This state information allows the model to condition its predictions on its current dynamic momentum.</li>
+  <li><strong>Control Actions (Ground Truth):</strong> The commanded linear and angular velocities produced by the Classical MPPI controller. For the behavioral cloning of the <code class="language-plaintext highlighter-rouge">src4</code> model, these actions serve as the target labels that the neural network learns to predict given the sensory and planning inputs.
+<img src="zarr_vis/robot_vw_1.png" alt="Robot Kinematics" style="max-width: 400px; height: auto;" /></li>
+</ul>
+<p style="text-align: center; font-style: italic; margin-bottom: 0.5em; color: #6c757d;">Robot linear and angular velocity commands (v, ω) represented as a red arrow</p>
+
+<p>The map below illustrates the pairs of navigable points (denoted by green dots) used during these data collection trials, alongside a video demonstrating the collection process in action:</p>
+
+<p><img src="pairs_overlay.png" alt="Navigable Point Pairs" /></p>
+<p style="text-align: center; font-style: italic; margin-bottom: 0.5em; color: #6c757d;">Navigable Point Pairs</p>
+
+<video src="data_collection_screencast.webm" controls="controls" style="max-width: 400px; height: auto; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); display: block; margin: 1.5rem auto;"></video>
+
+<h2 id="occupancynet-architecture--design-rationale">OccupancyNet Architecture &amp; Design Rationale</h2>
+
+<p>To accurately predict the necessary control trajectory, our OccupancyNet model employs a hybrid, two-stream neural architecture designed to separate spatial understanding from kinematic state representation before performing late fusion.</p>
+
+<p><img src="src_1_diagram_redone.drawio.png" alt="OccupancyNet Architecture" /></p>
+<p style="text-align: center; font-style: italic; margin-bottom: 0.5em; color: #6c757d;">OccupancyNet Architecture</p>
+
+<h3 id="what-the-model-is-doing">What the Model is Doing</h3>
+<ol>
+  <li><strong>Spatial Feature Extraction:</strong> The model ingests a 3-channel image tensor (3 x H x W) composed of the Local Costmap, the Cost-to-Go Map, and the Goal Mask. This stacked spatial representation is passed through a <strong>ResNet-18</strong> backbone, which acts as a powerful spatial feature extractor. The output is flattened into a 256-dimensional spatial embedding.</li>
+  <li><strong>Kinematic State Encoding:</strong> Concurrently, the robot’s current velocities (<i>v<sub>x</sub></i>, <i>v<sub>y</sub></i>, <i>ω</i>) are fed into a separate <strong>State MLP</strong> (Multi-Layer Perceptron), yielding a 64-dimensional kinematic state embedding.</li>
+  <li><strong>Late Fusion:</strong> The spatial embedding (256-d) and the state embedding (64-d) are concatenated to create a dense 320-dimensional vector in a process known as late fusion.</li>
+  <li><strong>Trajectory Prediction:</strong> This fused context vector is then passed through a final <strong>Trajectory MLP</strong>, which regresses the predicted local trajectory (a sequence of <i>K</i> waypoints, e.g., 5 waypoints).</li>
+</ol>
+
+<h3 id="why-we-chose-this-architecture">Why We Chose This Architecture</h3>
+<ul>
+  <li><strong>ResNet-18 for Robust Spatial Understanding:</strong> Navigation relies heavily on understanding complex, unstructured environments (e.g., tight corners, cluttered obstacles). ResNet’s residual connections allow it to learn deep, robust, hierarchical representations of the costmap efficiently without suffering from vanishing gradients.</li>
+  <li><strong>Separation of Concerns (Two-Stream Approach):</strong> By processing the spatial maps and the kinematic state independently, the network prevents the low-dimensional velocity data from being “washed out” or overpowered by the high-dimensional image data during early feature extraction.</li>
+  <li><strong>Late Fusion for Momentum Conditioning:</strong> Fusing the embeddings at the very end allows the model to first understand <em>where</em> it is and <em>where</em> it needs to go (spatial), and then condition that spatial plan on its current momentum (state). This ensures the predicted trajectory respects the physical constraints of the robot (e.g., preventing it from predicting physically impossible immediate sharp turns when the robot is moving at high speeds).</li>
+</ul>
+
+<h2 id="1-high-level-insights">1. High-Level Insights</h2>
+<ul>
+  <li><strong>Adherence to Target (Cross-Track Error):</strong> We measured how much the robot veered off the global plan by calculating the average minimum distance (AMD) between the actual traversed path (odom) and the target global plan.</li>
+  <li><strong>Speed Robustness:</strong> We explicitly isolated the high-speed traversal (0.6 - 0.9 m/s) to verify stability.</li>
+  <li><strong>Rollout Variance:</strong> The standard deviation (SD) of point-by-point discrepancies between the OccupancyNet and Classical predictions was calculated across <em>all</em> of these runs simultaneously to see how variance scales along the rollout horizon.</li>
+</ul>
+
+<h3 id="results">Results</h3>
+
+<p>Here are the recorded evaluation runs of the deployed robot:</p>
+
+<div style="display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; margin: 2rem 0;">
+    <iframe src="https://drive.google.com/file/d/1C81hmU0Tdpnzv3ennfauze1GQJrx3kcd/preview" width="280" height="210" allow="autoplay" style="margin: 0; box-shadow: 0 4px 8px rgba(0,0,0,0.1); border-radius: 8px;"></iframe>
+    <iframe src="https://drive.google.com/file/d/1AcnsnMZwNjEQduUE55bX14DsWziOvIWM/preview" width="280" height="210" allow="autoplay" style="margin: 0; box-shadow: 0 4px 8px rgba(0,0,0,0.1); border-radius: 8px;"></iframe>
+    <iframe src="https://drive.google.com/file/d/1uH55k0QtXNWeB53MMgMyvC2wr6y1ciyS/preview" width="280" height="210" allow="autoplay" style="margin: 0; box-shadow: 0 4px 8px rgba(0,0,0,0.1); border-radius: 8px;"></iframe>
+</div>
+
+<h2 id="2-overall-trajectory-deviation-sd-across-all-analyzed-runs">2. Overall Trajectory Deviation SD (Across All Analyzed Runs)</h2>
+<p>The following graph visualizes the Standard Deviation of the absolute distance between OccupancyNet’s predicted waypoint and the Classical MPPI’s predicted waypoint, indexed from the start of the horizon (Waypoint 1) to the end (Waypoint 20).</p>
+
+<p><img src="overall_sd_graph.png" alt="Overall SD Graph" /></p>
+<p style="text-align: center; font-style: italic; margin-bottom: 0.5em; color: #6c757d;">Overall SD Graph</p>
+
+<p><strong>Insight:</strong> As the waypoint index increases (looking further into the future of the rollout horizon), the standard deviation naturally scales up. The model is extremely confident and accurate up to Waypoint 12 (~0.1m SD), after which the uncertainty compounds slightly but remains remarkably bounded below 0.2m at the very end of the horizon.</p>
+
+<h2 id="3-deviation-profile-of-individual-runs">3. Deviation Profile of Individual Runs</h2>
+<p>Here are a few deeper dive statistical plots from specific runs showing how the first waypoint tracks over time, and how the mean/median deviation diverges along the horizon:</p>
+
+<h3 id="normal-run---rosbag2_2026_09_18-16_11_41-run-2">Normal Run - <code class="language-plaintext highlighter-rouge">rosbag2_2026_09_18-16_11_41</code> (Run 2)</h3>
+<p><img src="rosbag2_2026_09_18-16_11_41_run_2_deviation_stats.png" alt="Deviation Stats 1" /></p>
+<p style="text-align: center; font-style: italic; margin-bottom: 0.5em; color: #6c757d;">Deviation Stats 1</p>
+
+<h3 id="high-speed-run---rosbag2_2026_09_17-16_05_46-run-2">High Speed Run - <code class="language-plaintext highlighter-rouge">rosbag2_2026_09_17-16_05_46</code> (Run 2)</h3>
+<p><img src="rosbag2_2026_09_17-16_05_46_run_2_deviation_stats.png" alt="Deviation Stats 2" /></p>
+<p style="text-align: center; font-style: italic; margin-bottom: 0.5em; color: #6c757d;">Deviation Stats 2</p>
+
+<h3 id="normal-run---rosbag2_2026_09_17-16_36_50-run-1">Normal Run - <code class="language-plaintext highlighter-rouge">rosbag2_2026_09_17-16_36_50</code> (Run 1)</h3>
+<p><img src="rosbag2_2026_09_17-16_36_50_run_1_deviation_stats.png" alt="Deviation Stats 3" /></p>
+<p style="text-align: center; font-style: italic; margin-bottom: 0.5em; color: #6c757d;">Deviation Stats 3</p>
+
+<h2 id="4-spatial-trajectory-comparisons">4. Spatial Trajectory Comparisons</h2>
+
+<h3 id="rosbag2_2026_09_17-16_42_25-run-1---normal-run-1">rosbag2_2026_09_17-16_42_25 (Run 1) - Normal Run 1</h3>
+<ul>
+  <li><strong>Average Veering off Global Path (Odom -&gt; Plan):</strong> <code class="language-plaintext highlighter-rouge">0.0658 meters</code></li>
+</ul>
+
+<p><img src="rosbag2_2026_09_17-16_42_25_run1_spatial.png" alt="Run Spatial" /></p>
+<p style="text-align: center; font-style: italic; margin-bottom: 0.5em; color: #6c757d;">Run Spatial</p>
+
+<h3 id="rosbag2_2026_09_18-16_11_41-run-2---normal-run-2">rosbag2_2026_09_18-16_11_41 (Run 2) - Normal Run 2</h3>
+<ul>
+  <li><strong>Average Veering off Global Path (Odom -&gt; Plan):</strong> <code class="language-plaintext highlighter-rouge">0.0543 meters</code></li>
+</ul>
+
+<p><img src="rosbag2_2026_09_18-16_11_41_run2_spatial.png" alt="Run Spatial" /></p>
+<p style="text-align: center; font-style: italic; margin-bottom: 0.5em; color: #6c757d;">Run Spatial</p>
+
+<h3 id="rosbag2_2026_09_17-16_36_50-run-1---normal-run-1">rosbag2_2026_09_17-16_36_50 (Run 1) - Normal Run 1</h3>
+<ul>
+  <li><strong>Average Veering off Global Path (Odom -&gt; Plan):</strong> <code class="language-plaintext highlighter-rouge">0.0487 meters</code></li>
+</ul>
+
+<p><img src="rosbag2_2026_09_17-16_36_50_run1_spatial.png" alt="Run Spatial" /></p>
+<p style="text-align: center; font-style: italic; margin-bottom: 0.5em; color: #6c757d;">Run Spatial</p>
+
+<h3 id="rosbag2_2026_09_17-16_36_50-run-2---normal-run-2">rosbag2_2026_09_17-16_36_50 (Run 2) - Normal Run 2</h3>
+<ul>
+  <li><strong>Average Veering off Global Path (Odom -&gt; Plan):</strong> <code class="language-plaintext highlighter-rouge">0.0763 meters</code></li>
+</ul>
+
+<p><img src="rosbag2_2026_09_17-16_36_50_run2_spatial.png" alt="Run Spatial" /></p>
+<p style="text-align: center; font-style: italic; margin-bottom: 0.5em; color: #6c757d;">Run Spatial</p>
+
+<h3 id="rosbag2_2026_09_17-16_05_46-run-2---high-speed-run-06-09ms">rosbag2_2026_09_17-16_05_46 (Run 2) - High Speed Run (0.6-0.9m/s)</h3>
+<ul>
+  <li><strong>Average Veering off Global Path (Odom -&gt; Plan):</strong> <code class="language-plaintext highlighter-rouge">0.0912 meters</code></li>
+</ul>
+
+<p><img src="rosbag2_2026_09_17-16_05_46_run2_spatial.png" alt="Run Spatial" /></p>
+<p style="text-align: center; font-style: italic; margin-bottom: 0.5em; color: #6c757d;">Run Spatial</p>
+
+<h2 id="5-hardware-performance-insights-nvidia-jetson">5. Hardware Performance Insights (NVIDIA Jetson)</h2>
+
+<p>To ensure our inference node could run sustainably on edge hardware without starving the underlying ROS 2 navigation stack, we recorded resource utilization during active inference.</p>
+
+<p><img src="jetson_perf_graph.png" alt="Jetson Performance" /></p>
+<p style="text-align: center; font-style: italic; margin-bottom: 0.5em; color: #6c757d;">Jetson Performance</p>
+
+<p><strong>Key Observations:</strong></p>
+<ul>
+  <li><strong>CPU Utilization:</strong> The OccupancyNet inference node consumes an average of <strong>11.19% CPU</strong>, peaking at only <strong>12.30%</strong>. This is highly efficient and leaves ample compute headroom for DLIO, ICP, and the Nav2 global planner to execute concurrently.</li>
+  <li><strong>Memory Footprint:</strong> System RAM usage remained remarkably stable, averaging <strong>1.44 GB</strong> with a peak of <strong>1.52 GB</strong>. On the Jetson’s unified memory architecture, this footprint encompasses both the application overhead and the PyTorch model weights/activations. This compact memory profile proves that the <code class="language-plaintext highlighter-rouge">src4</code> model is exceptionally well-suited for edge deployment on SWaP-constrained robotic platforms.</li>
+</ul>
+
+    </div>
+</body>
+</html>
