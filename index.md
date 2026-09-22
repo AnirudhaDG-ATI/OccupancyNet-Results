@@ -1,9 +1,9 @@
 ---
 layout: default
-title: OccupancyReact Final Report
+title: OccupancyNet Results
 ---
 
-<h1 style="text-align: center;">OccupancyReact</h1>
+<h1 style="text-align: center;">OccupancyNet</h1>
 > **Abstract:** This report presents a comprehensive analysis of OccupancyNet, a learned neural network controller for autonomous navigation, evaluated against a classical MPPI baseline. **A critical focus of this work is the successful sim-to-real pipeline: the model is extensively trained on procedurally generated, highly diverse warehouse environments within NVIDIA Isaac Sim, and subsequently deployed and validated in real-world scenarios on an NVIDIA Jetson-powered physical robot**. The document details the simulated data collection methodology, the hybrid two-stream neural architecture (ResNet-18 for spatial feature extraction and a State MLP for kinematic encoding), and empirical results encompassing trajectory deviation, cross-track error, and edge hardware utilization.
 
 ## Data Collection Methodology
