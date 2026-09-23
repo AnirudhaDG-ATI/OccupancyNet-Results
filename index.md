@@ -6,6 +6,12 @@ title: OccupancyNet Results
 <h1 style="text-align: center;">OccupancyNet</h1>
 > **Abstract:** This report presents a comprehensive analysis of OccupancyNet, a learned neural network controller for autonomous navigation, evaluated against a classical MPPI baseline. **A critical focus of this work is the successful sim-to-real pipeline: the model is extensively trained on procedurally generated, highly diverse warehouse environments within NVIDIA Isaac Sim, and subsequently deployed and validated in real-world scenarios on an NVIDIA Jetson-powered physical robot**. The document details the simulated data collection methodology, the hybrid two-stream neural architecture (ResNet-18 for spatial feature extraction and a State MLP for kinematic encoding), and empirical results encompassing trajectory deviation, cross-track error, and edge hardware utilization.
 
+## Background & Motivation
+
+The controller architecture draws inspiration from the reactive visual navigation strategy demonstrated in MASt3R-Nav, mainly, its Pixel-React Controller and cost-to-go navigation formulation.
+
+In MASt3R-Nav, visual goal conditioning is framed around an explicit cost-to-go potential field, allowing a local policy to translate high-level routing goals into immediate, kinematically sound actions without getting trapped in local minima. Adapting this insight to an ego-centric spatial domain, our system represents global routing as an explicit Cost-to-Go potential field derived from the global planner. By treating global intent as a continuous potential landscape rather than sparse, discrete targets, the network is conditioned to trace the steepest descent path (the "least-cost valley") toward the goal.
+
 ## Data Collection Methodology
 ### Procedural Environment Generation in Isaac Sim
 To ensure our learned controller was trained and evaluated on a diverse set of navigation scenarios, the data collection environment was procedurally generated within Isaac Sim:
@@ -148,3 +154,29 @@ To ensure our inference node could run sustainably on edge hardware without star
 **Key Observations:**
 - **CPU Utilization:** The OccupancyNet inference node consumes an average of **11.19% CPU**, peaking at only **12.30%**. This is highly efficient and leaves ample compute headroom for DLIO, ICP, and the Nav2 global planner to execute concurrently.
 - **Memory Footprint:** System RAM usage remained remarkably stable, averaging **1.44 GB** with a peak of **1.52 GB**. On the Jetson's unified memory architecture, this footprint encompasses both the application overhead and the PyTorch model weights/activations. This compact memory profile proves that the `src4` model is exceptionally well-suited for edge deployment on SWaP-constrained robotic platforms.
+
+## 6. Future Prospects: End-to-End, Perception-Conditioned Docking
+
+The current multi-point alignment sequence (YOLO detection followed by a rigid 3-point kinematic routine) will be replaced with an end-to-end learned docking controller. The policy will couple perception directly to motion execution by conditioning trajectory generation on visual features and perception uncertainty.
+
+### 1. Perception-to-Trajectory Coupling
+Instead of using a state machine to generate intermediate geometric waypoints from static detections, the YOLO pallet detection outputs feed directly into the controller network:
+
+- **State MLP Extension:** The estimated pallet target pose [<i>x<sub>p</sub></i>, <i>y<sub>p</sub></i>, <i>&theta;<sub>p</sub></i>] in the ego-frame is continuously passed alongside kinematics [<i>v</i>, <i>&omega;</i>] into the State MLP.
+- **Spatial Feature Conditioning:** Pallet bounding masks and pockets are rasterized into the ego-centric grid space, allowing the ResNet backbone to reason about physical slot margins alongside obstacle clearance.
+
+### 2. Conditioning on Perception Uncertainty
+Real-world pallet detection degrades under variable lighting, distance, and occlusions. To prevent error compounding, the controller is conditioned directly on detector uncertainty:
+
+- **Uncertainty Inputs:** The State MLP ingests the detector confidence <i>c</i> &isin; [0,1] and spatial covariance &Sigma
+- **Learned Risk Mitigation:**
+  - *High Uncertainty:* The policy defaults to cautious deceleration, generating waypoints that maintain sensor sightlines while delaying aggressive alignment turns.
+  - *Low Uncertainty:* As the vehicle nears the pallet and covariance drops, the policy commits to tight, continuous reversing maneuvers into the pocket.
+
+### 3. Simulating Perception Uncertainty in Isaac Sim
+To bridge the sim-to-real gap, perception noise will be modeled synthetically during training in Isaac Sim:
+
+- **Distance & Angle Noise Inversion:** Pose covariance &Sigma; will be injected into ground-truth Isaac Sim bounding boxes as a function of range and viewing angle 
+- **Synthetic Occlusion & Dropouts:** Pallet masks and confidence metrics will undergo random channel dropouts and synthetic feature noise during simulation runs to train the policy to recover gracefully from transient detection loss.
+
+
